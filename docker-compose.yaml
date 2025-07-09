@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  # ======================== #
+  # 🧠 PostgreSQL Database   #
+  # ======================== #
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: go
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  # ======================== #
+  # 🚀 Redis for Session/Cache #
+  # ======================== #
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+
+  # ======================== #
+  # 📦 Backend - Go Fiber API #
+  # ======================== #
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blog-api
+    depends_on:
+      - db
+      - redis
+      - jaeger
+    ports:
+      - "8080:8080"
+    networks:
+      - backend
+
+
+  # ======================== #
+  # 🔍 Jaeger Tracing UI     #
+  # ======================== #
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    restart: always
+    ports:
+      - "16686:16686" # UI
+      - "14268:14268" # Collector endpoint
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+    driver: bridge

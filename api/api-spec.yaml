@@ -1,0 +1,238 @@
+openapi: 3.0.0
+info:
+  title: Golang Clean Architecture
+  description: Golang Clean Architecture
+  version: 1.0.0
+  contact:
+    name: Fernanda Syafalam
+    email: fernandaiqshal111@gmail.com
+  termsOfService: http://swagger.io/terms/
+
+tags:
+  - name: Users API
+servers:
+  - url: 'http://localhost:3000'
+
+paths:
+  '/api/users':
+    get:
+      tags:
+        - Users API
+      description: Get All Users
+      parameters:
+        - $ref: '#/components/parameters/authorization'
+      responses:
+        200:
+          description: Success Get All Users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUsersResponse'
+
+    post:
+      tags:
+        - Users API
+      description: Register New User
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+              required:
+                - id
+                - password
+                - name
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+
+  /api/users/{id}:
+    get:
+      description: Get User By ID
+      tags:
+        - Users API
+      parameters:
+        - $ref: '#/components/parameters/authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Success Get User By ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+
+    put:
+      description: Update User By ID
+      tags:
+        - Users API
+      parameters:
+        - $ref: '#/components/parameters/authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+              required:
+                - id
+                - password
+                - name
+      responses:
+        200:
+          description: Success Update User By ID
+
+    delete:
+      description: Delete User By ID
+      tags:
+        - Users API
+      parameters:
+        - $ref: '#/components/parameters/authorization'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Success Delete User By ID
+
+  /api/users/login:
+    post:
+      description: Login User
+      tags:
+        - Users API
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+              required:
+                - id
+                - password
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /api/users/current:
+    get:
+      description: Get User Profile
+      tags:
+        - Users API
+      parameters:
+        - $ref: '#/components/parameters/authorization'
+      responses:
+        200:
+          description: Success Get User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMeResponse'
+
+    patch:
+      description: Update User Profile
+      tags:
+        - Users API
+      parameters:
+        - $ref: '#/components/parameters/authorization'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+              required:
+                - id
+                - password
+                - name
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+
+components:
+  schemas:
+    GetUsersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateUserResponse'
+    CreateUserRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+    CreateUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: number
+        updated_at:
+          type: number
+    LoginRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+    GetMeResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            created_at:
+              type: number
+            updated_at:
+              type: number
+
+  parameters:
+    authorization:
+      name: Authorization
+      in: header
+      required: true
+      schema:
+        type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

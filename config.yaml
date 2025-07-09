@@ -1,0 +1,26 @@
+app:
+  name: 'golang clean architecture'
+
+web:
+  prefork: false
+  port: 8080
+
+log:
+  level: 'debug'
+
+database:
+  username: 'postgres'
+  password: 'postgres'
+  host: 'localhost'
+  port: '5432'
+  name: 'go'
+  pool:
+    idle: 20
+    max: 100
+    lifetime: 30
+
+redis:
+  address: redis:6379
+
+jaeger:
+  endpoint: http://localhost:14268/api/traces
