@@ -24,3 +24,7 @@ redis:
 
 jaeger:
   endpoint: http://localhost:14268/api/traces
+
+jwt:
+  secret: 'secret'
+  expiration: 30

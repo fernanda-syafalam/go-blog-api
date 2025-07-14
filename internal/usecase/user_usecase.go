@@ -2,42 +2,61 @@ package usecase
 
 import (
 	"context"
-	"time"
+	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/entity"
 	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/model"
 	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/model/converter"
 	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/repository"
+	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/utils"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/knadh/koanf"
 	"github.com/rs/zerolog"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
+
 	"gorm.io/gorm"
 )
 
-var jwtSecretKey = []byte("your-very-secret-key")
-
-type UserUseCase struct {
+type userUseCaseImpl struct {
 	DB             *gorm.DB
 	Log            *zerolog.Logger
+	cfg            *koanf.Koanf
 	Validate       *validator.Validate
-	UserRepository *repository.UserRepository
+	UserRepository repository.UserRepository
 }
 
-func NewUserUseCase(db *gorm.DB, log *zerolog.Logger, validate *validator.Validate, userRepository *repository.UserRepository) *UserUseCase {
-	return &UserUseCase{
+type UserUseCase interface {
+	Verify(ctx context.Context, request *model.VerifyUserRequest) (*model.Auth, error)
+	Create(ctx context.Context, request *model.RegisterUserRequest) (*model.UserResponse, error)
+	Login(ctx context.Context, request *model.LoginUserRequest) (*model.UserResponse, error)
+	GetAllUsers() ([]entity.User, error)
+	GetUserByID(id uint) (*entity.User, error)
+	UpdateUser(id uint, username, email, password, role *string) (*entity.User, error)
+	DeleteUser(id uint) error
+}
+
+var (
+	JwtSecret string
+	JwtExpire int
+)
+
+func NewUserUseCase(db *gorm.DB, log *zerolog.Logger, validate *validator.Validate, UserRepository repository.UserRepository, config *koanf.Koanf) *userUseCaseImpl {
+	JwtExpire = config.Int("jwt.expiration")
+	JwtSecret = config.String("jwt.secret")
+
+	return &userUseCaseImpl{
 		DB:             db,
 		Log:            log,
+		cfg:            config,
 		Validate:       validate,
-		UserRepository: userRepository,
+		UserRepository: UserRepository,
 	}
 }
 
-func (c *UserUseCase) Verify(ctx context.Context, request *model.VerifyUserRequest) (*model.Auth, error) {
+func (c *userUseCaseImpl) Verify(ctx context.Context, request *model.VerifyUserRequest) (*model.Auth, error) {
 	tx := c.DB.WithContext(ctx).Begin()
 	defer tx.Rollback()
 
@@ -48,7 +67,7 @@ func (c *UserUseCase) Verify(ctx context.Context, request *model.VerifyUserReque
 	}
 
 	user := new(entity.User)
-	if err := c.UserRepository.FindByToken(tx, user, request.Token); err != nil {
+	if err := c.UserRepository.FindByToken(user, request.Token); err != nil {
 		c.Log.Warn().Msgf("Failed to find user by token : %v", err)
 		return nil, fiber.ErrNotFound
 	}
@@ -63,7 +82,7 @@ func (c *UserUseCase) Verify(ctx context.Context, request *model.VerifyUserReque
 	}, nil
 }
 
-func (c *UserUseCase) Create(ctx context.Context, request *model.RegisterUserRequest) (*model.UserResponse, error) {
+func (c *userUseCaseImpl) Create(ctx context.Context, request *model.RegisterUserRequest) (*model.UserResponse, error) {
 	tx := c.DB.WithContext(ctx).Begin()
 	defer tx.Rollback()
 
@@ -73,14 +92,14 @@ func (c *UserUseCase) Create(ctx context.Context, request *model.RegisterUserReq
 		return nil, fiber.ErrBadRequest
 	}
 
-	total, err := c.UserRepository.CountById(tx, request.ID)
+	total, err := c.UserRepository.CountByEmail(request.Email)
 	if err != nil {
 		c.Log.Warn().Msgf("Failed to count user by id : %v", err)
 		return nil, fiber.ErrInternalServerError
 	}
 
 	if total > 0 {
-		c.Log.Warn().Msgf("User with id %s already exists", request.ID)
+		c.Log.Warn().Msgf("User with id %s already exists", request.Email)
 		return nil, fiber.ErrConflict
 	}
 
@@ -91,9 +110,9 @@ func (c *UserUseCase) Create(ctx context.Context, request *model.RegisterUserReq
 	}
 
 	user := &entity.User{
-		ID:       request.ID,
-		Password: string(password),
-		Name:     request.Name,
+		Email:        request.Email,
+		PasswordHash: string(password),
+		Username:     request.Username,
 	}
 
 	if err := c.UserRepository.Create(tx, user); err != nil {
@@ -109,69 +128,122 @@ func (c *UserUseCase) Create(ctx context.Context, request *model.RegisterUserReq
 	return converter.UserToResponse(user), nil
 }
 
-func (c *UserUseCase) Login(ctx context.Context, request *model.LoginUserRequest) (*model.UserResponse, error) {
-	tracer := otel.Tracer("user-usecase")
-	ctx, span := tracer.Start(ctx, "UserUseCase.Login")
-	defer span.End()
+func (c *userUseCaseImpl) Login(ctx context.Context, request *model.LoginUserRequest) (*model.UserResponse, error) {
 
 	err := c.Validate.Struct(request)
 	if err != nil {
 		c.Log.Warn().Msgf("Invalid request body: %v", err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "Validation failed")
+
 		return nil, fiber.ErrBadRequest
 	}
 
-	user := new(entity.User)
-	if err := c.UserRepository.FindById(ctx, c.DB, user, request.ID); err != nil {
+	user, err := c.UserRepository.FindByEmail(request.Email)
+	if err != nil {
 		c.Log.Warn().Msgf("User not found: %v", err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "User not found")
+
 		return nil, fiber.ErrNotFound
 	}
+	fmt.Println(user)
 
-	match, err := argon2id.ComparePasswordAndHash(request.Password, user.Password)
+	match, err := argon2id.ComparePasswordAndHash(request.Password, user.PasswordHash)
 	if err != nil || !match {
 		c.Log.Warn().Msg("Password mismatch")
-		span.SetStatus(codes.Error, "Invalid credentials")
-		if err != nil {
-			span.RecordError(err)
-		}
+
 		return nil, fiber.ErrUnauthorized
 	}
 
-	accessToken, err := c.generateAccessToken(ctx,user.ID)
+	accessToken, err := utils.GenerateToken(user.ID, user.Role, JwtSecret, JwtExpire)
 	if err != nil {
 		c.Log.Error().Msgf("Failed to generate access token: %v", err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "Token generation failed")
+
 		return nil, fiber.ErrInternalServerError
 	}
-
-	span.SetAttributes(
-		attribute.String("user.id", user.ID),
-		attribute.String("user.name", user.Name),
-	)
-	span.SetStatus(codes.Ok, "Login success")
-
 	return &model.UserResponse{
-		ID:    user.ID,
-		Name:  user.Name,
-		Token: accessToken,
+		ID:       user.ID,
+		Username: user.Username,
+		Token:    accessToken,
 	}, nil
 }
 
-func (c *UserUseCase) generateAccessToken(ctx context.Context, userID string) (string, error) {
-	tracer := otel.Tracer("user-usecase-generate-access-token")
-	ctx, span := tracer.Start(ctx, "UserUseCase.generateAccessToken")
-	defer span.End()
-	claims := jwt.MapClaims{
-		"sub": userID,
-		"exp": time.Now().Add(15 * time.Minute).Unix(),
-		"iat": time.Now().Unix(),
-		"iss": "your-app",
+func (s *userUseCaseImpl) GetAllUsers() ([]entity.User, error) {
+	users, err := s.UserRepository.FindAll()
+	if err != nil {
+		return nil, errors.New("Gagal mengambil semua pengguna: " + err.Error())
+	}
+	return users, nil
+}
+
+func (s *userUseCaseImpl) GetUserByID(id uint) (*entity.User, error) {
+	user, err := s.UserRepository.FindByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, utils.ErrNotFound("Pengguna")
+		}
+		return nil, errors.New("Gagal mengambil pengguna: " + err.Error())
+	}
+	return user, nil
+}
+
+func (s *userUseCaseImpl) UpdateUser(id uint, username, email, password, role *string) (*entity.User, error) {
+	user, err := s.UserRepository.FindByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, utils.ErrNotFound("Pengguna")
+		}
+		return nil, errors.New("Gagal menemukan pengguna: " + err.Error())
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecretKey)
+	user.Username = *username
+
+	if email != nil && *email != "" {
+		if !strings.EqualFold(user.Email, *email) {
+			existingUser, err := s.UserRepository.FindByEmail(*email)
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, errors.New("Gagal memeriksa email: " + err.Error())
+			}
+			if existingUser != nil && existingUser.ID != 0 && existingUser.ID != user.ID {
+				return nil, utils.ErrValidation("Email '" + *email + "' sudah digunakan")
+			}
+			user.Email = *email
+		}
+	}
+
+	if password != nil && *password != "" {
+		hashedPassword, err := argon2id.CreateHash(*password, argon2id.DefaultParams)
+		if err != nil {
+			return nil, errors.New("Gagal mengenkripsi password: " + err.Error())
+		}
+		user.PasswordHash = string(hashedPassword)
+	}
+
+	if role != nil && *role != "" {
+		switch entity.UserRole(*role) {
+		case entity.UserRoleReader, entity.UserRoleAuthor, entity.UserRoleAdmin:
+			user.Role = entity.UserRole(*role)
+		default:
+			return nil, utils.ErrValidation("Role pengguna tidak valid: " + *role)
+		}
+	}
+
+	err = s.UserRepository.Update(s.DB, user)
+	if err != nil {
+		return nil, errors.New("Gagal memperbarui pengguna: " + err.Error())
+	}
+	return user, nil
+}
+
+func (s *userUseCaseImpl) DeleteUser(id uint) error {
+	_, err := s.UserRepository.FindByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.ErrNotFound("Pengguna")
+		}
+		return errors.New("Gagal menemukan pengguna: " + err.Error())
+	}
+
+	err = s.UserRepository.Delete(id)
+	if err != nil {
+		return errors.New("Gagal menghapus pengguna: " + err.Error())
+	}
+	return nil
 }

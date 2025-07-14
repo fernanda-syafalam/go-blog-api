@@ -1,22 +1,50 @@
 package middleware
 
 import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
 	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/model"
+	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/utils"
 	"github.com/gofiber/fiber/v2"
-	jwtware "github.com/gofiber/jwt/v3"
+	"github.com/knadh/koanf"
 )
 
-func JWTMiddleware(secret []byte) fiber.Handler {
-	return jwtware.New(jwtware.Config{
-		SigningKey: secret,
-		ErrorHandler: func(c *fiber.Ctx, err error) error {
-			return fiber.ErrUnauthorized
-		},
-	})
+func JWTMiddleware(k *koanf.Koanf) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		authHeader := c.Get("Authorization")
+		if authHeader == "" {
+			return utils.SendErrorResponse(c, http.StatusUnauthorized, "Token not found")
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			return utils.SendErrorResponse(c, http.StatusUnauthorized, "Invalid Format auth")
+		}
+
+		tokenString := parts[1]
+		claims, err:= utils.ParseToken(tokenString, k.String("jwt.secret"))
+		if err != nil {
+			fmt.Println(err)
+			return utils.SendErrorResponse(c, http.StatusUnauthorized, "Token invalid")
+		}
+
+		userId, err := strconv.ParseUint(claims.UserID, 10, 64)
+		if err != nil {
+			return utils.SendErrorResponse(c, http.StatusInternalServerError, "Failed to parse userID")
+		}
+		c.Locals("userID", uint(userId))
+		c.Locals("userRole", claims.Role)
+
+		return c.Next()	
+	}
 }
 
 func GetUser(ctx *fiber.Ctx) *model.Auth {
 	auth, _ := ctx.Locals("auth").(*model.Auth)
 	return auth
 }
+
 

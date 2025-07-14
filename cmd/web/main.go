@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-
 	config.Load()
 	k := config.Get()
 	tp := config.InitTracer("backend-monitoring-notification", k)

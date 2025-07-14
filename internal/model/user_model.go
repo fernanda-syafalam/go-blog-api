@@ -1,11 +1,13 @@
 package model
 
+import "time"
+
 type UserResponse struct {
-	ID string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-	Token string `json:"token,omitempty"`
-	CreatedAt int64 `json:"created_at,omitempty"`
-	UpdatedAt int64 `json:"updated_at,omitempty"`
+	ID        uint       `json:"id,omitempty"`
+	Username  string     `json:"username,omitempty"`
+	Token     string     `json:"token,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
 type VerifyUserRequest struct {
@@ -13,26 +15,27 @@ type VerifyUserRequest struct {
 }
 
 type RegisterUserRequest struct {
-	ID string `json:"id" validate:"required,max=100"`
+	Email    string `json:"email" validate:"required,max=100"`
 	Password string `json:"password" validate:"required,max=100"`
-	Name string `json:"name" validate:"required,max=100"`
+	Username string `json:"username" validate:"required,max=100"`
 }
 
 type UpdateUserRequest struct {
-	ID string `json:"-" validate:"required,max=100"`
-	Password string `json:"password,omitempty" validate:"required,max=100"`
-	Name string `json:"name,omitempty" validate:"required,max=100"`
+	Username *string `json:"username,omitempty" validate:"omitempty,min=3,max=50"`
+	Email    *string `json:"email,omitempty" validate:"omitempty,email"`
+	Password *string `json:"password,omitempty" validate:"omitempty,min=8"`
+	Role     *string `json:"role,omitempty" validate:"omitempty,oneof=user admin"`
 }
 
 type LoginUserRequest struct {
-	ID string `json:"id" validate:"required,max=100"`
+	Email    string `json:"email" validate:"required,max=100"`
 	Password string `json:"password" validate:"required,max=100"`
 }
 
 type LogoutUserRequest struct {
-	ID string `json:"id" validate:"required,max=100"`
+	Email string `json:"email" validate:"required,max=100"`
 }
 
 type GetUserRequest struct {
-	ID string `json:"id" validate:"required,max=100"`
+	Email string `json:"email" validate:"required,max=100"`
 }

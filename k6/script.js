@@ -29,15 +29,15 @@ export default function () {
   const user = USERS[Math.floor(Math.random() * USERS.length)];
 
   const payload = JSON.stringify({
-    id: 'username',
-    password: 'password',
+    email: 'john.doe@example.com',
+    password: 'strongpassword123',
   });
 
   const headers = {
     'Content-Type': 'application/json',
   };
 
-  const res = http.post(`${BASE_URL}/api/users/login`, payload, { headers });
+  const res = http.post(`${BASE_URL}/api/auth/login`, payload, { headers });
 
   loginTrend.add(res.timings.duration);
   loginSuccessRate.add(res.status === 200);

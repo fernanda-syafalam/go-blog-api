@@ -1,15 +1,22 @@
 package entity
 
+type UserRole string
+
+const (
+	UserRoleAdmin  UserRole = "admin"
+	UserRoleAuthor UserRole = "Author"
+	UserRoleReader UserRole = "reader"
+)
+
 type User struct {
-	ID string 	`gorm:"colomn:id;primaryKey"`
-	Password string `gorm:"colomn:password"`
-	Name string `gorm:"colomn:name"`
-	Token string `gorm:"colomn:token"`
-	CreatedAt int64 `gorm:"colomn:created_at"`
-	UpdatedAt int64 `gorm:"colomn:updated_at"`
+	BaseEntity
+	Email        string   `gorm:"colomn:email:unique;not null" json:"email"`
+	PasswordHash string   `gorm:"colomn:password_hash;not null" json:"password_hash"`
+	Username     string   `gorm:"colomn:username;not null" json:"username"`
+	Role         UserRole `gorm:"colomn:role;default:reader" json:"role"`
+	Posts        []Post   `json:"posts" gorm:"foreignKey:AuthorID"`
 }
 
 func (*User) TableName() string {
 	return "users"
 }
-
