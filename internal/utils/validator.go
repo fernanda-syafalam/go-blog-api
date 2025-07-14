@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/common/response"
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 )
@@ -27,6 +28,7 @@ func SendValidatorErrorResponse(c *fiber.Ctx, err error) error {
 
 	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 		"success": false,
+		"code":    response.BadRequest.GetCode(),
 		"message": "validation error",
 		"errors":  erorrs,
 	})

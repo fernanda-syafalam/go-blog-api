@@ -1,12 +1,11 @@
-// handlers/comment_handler.go
 package http
 
 import (
 	"errors"
-	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/common/response"
 	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/usecase"
 	"github.com/fernanda-syafalam/backend-monitoring-notification/internal/utils"
 	"github.com/go-playground/validator/v10"
@@ -15,7 +14,7 @@ import (
 
 type CommentController struct {
 	newCommentUseCase usecase.CommentUseCase
-	validator      *validator.Validate
+	validator         *validator.Validate
 }
 
 func NewCommentController(newCommentUseCase usecase.CommentUseCase, validator *validator.Validate) *CommentController {
@@ -29,49 +28,49 @@ type CreateCommentRequest struct {
 func (h *CommentController) CreateComment(c *fiber.Ctx) error {
 	postID, err := strconv.ParseUint(c.Params("postID"), 10, 32)
 	if err != nil {
-		return utils.SendErrorResponse(c, http.StatusBadRequest, "ID postingan tidak valid")
+		return utils.SendErrorResponse(c, response.BadRequest)
 	}
 
 	var req CreateCommentRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.SendErrorResponse(c, http.StatusBadRequest, "Invalid request body")
+		return utils.SendErrorResponse(c, response.BadRequest)
 	}
 
 	if err := h.validator.Struct(req); err != nil {
 		return utils.SendValidatorErrorResponse(c, err)
 	}
 
-	authorID := c.Locals("userID").(uint) 
+	authorID := c.Locals("userID").(uint)
 
 	comment, err := h.newCommentUseCase.CreateComment(req.Content, uint(postID), authorID)
 	if err != nil {
 		if errors.Is(err, utils.ErrNotFound("")) {
-			return utils.SendErrorResponse(c, http.StatusNotFound, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
 		if strings.Contains(err.Error(), "tidak valid") { // Untuk validasi dari service
-			return utils.SendErrorResponse(c, http.StatusBadRequest, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
-		return utils.SendErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return utils.SendErrorResponse(c, response.ServerError, err.Error())
 	}
 
-	return utils.SendSuccessResponse(c, http.StatusCreated, "Komentar berhasil dibuat", comment)
+	return utils.SendSuccessResponse(c, response.Success, comment)
 }
 
 func (h *CommentController) GetCommentsByPostID(c *fiber.Ctx) error {
 	postID, err := strconv.ParseUint(c.Params("postID"), 10, 32)
 	if err != nil {
-		return utils.SendErrorResponse(c, http.StatusBadRequest, "ID postingan tidak valid")
+		return utils.SendErrorResponse(c, response.BadRequest)
 	}
 
 	comments, err := h.newCommentUseCase.GetCommentsByPostID(uint(postID))
 	if err != nil {
 		if errors.Is(err, utils.ErrNotFound("")) {
-			return utils.SendErrorResponse(c, http.StatusNotFound, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
-		return utils.SendErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return utils.SendErrorResponse(c, response.ServerError, err.Error())
 	}
 
-	return utils.SendSuccessResponse(c, http.StatusOK, "Komentar berhasil diambil", comments)
+	return utils.SendSuccessResponse(c, response.Success, comments)
 }
 
 type UpdateCommentRequest struct {
@@ -81,12 +80,12 @@ type UpdateCommentRequest struct {
 func (h *CommentController) UpdateComment(c *fiber.Ctx) error {
 	commentID, err := strconv.ParseUint(c.Params("commentID"), 10, 32)
 	if err != nil {
-		return utils.SendErrorResponse(c, http.StatusBadRequest, "ID komentar tidak valid")
+		return utils.SendErrorResponse(c, response.BadRequest)
 	}
 
 	var req UpdateCommentRequest
 	if err := c.BodyParser(&req); err != nil {
-		return utils.SendErrorResponse(c, http.StatusBadRequest, "Invalid request body")
+		return utils.SendErrorResponse(c, response.BadRequest)
 	}
 
 	if err := h.validator.Struct(req); err != nil {
@@ -98,25 +97,25 @@ func (h *CommentController) UpdateComment(c *fiber.Ctx) error {
 	comment, err := h.newCommentUseCase.UpdateComment(uint(commentID), authorID, req.Content)
 	if err != nil {
 		if errors.Is(err, utils.ErrNotFound("")) {
-			return utils.SendErrorResponse(c, http.StatusNotFound, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
 		if errors.Is(err, utils.ErrForbidden("")) {
-			return utils.SendErrorResponse(c, http.StatusForbidden, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
 		if strings.Contains(err.Error(), "tidak valid") { // Untuk validasi dari service
-			return utils.SendErrorResponse(c, http.StatusBadRequest, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
-		return utils.SendErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return utils.SendErrorResponse(c, response.ServerError, err.Error())
 	}
 
-	return utils.SendSuccessResponse(c, http.StatusOK, "Komentar berhasil diperbarui", comment)
+	return utils.SendSuccessResponse(c, response.Success, comment)
 }
 
 // DeleteComment menghapus komentar
 func (h *CommentController) DeleteComment(c *fiber.Ctx) error {
 	commentID, err := strconv.ParseUint(c.Params("commentID"), 10, 32)
 	if err != nil {
-		return utils.SendErrorResponse(c, http.StatusBadRequest, "ID komentar tidak valid")
+		return utils.SendErrorResponse(c, response.BadRequest, "ID komentar tidak valid")
 	}
 
 	authorID := c.Locals("userID").(uint)
@@ -124,13 +123,13 @@ func (h *CommentController) DeleteComment(c *fiber.Ctx) error {
 	err = h.newCommentUseCase.DeleteComment(uint(commentID), authorID)
 	if err != nil {
 		if errors.Is(err, utils.ErrNotFound("")) {
-			return utils.SendErrorResponse(c, http.StatusNotFound, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
 		if errors.Is(err, utils.ErrForbidden("")) {
-			return utils.SendErrorResponse(c, http.StatusForbidden, err.Error())
+			return utils.SendErrorResponse(c, response.BadRequest, err.Error())
 		}
-		return utils.SendErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return utils.SendErrorResponse(c, response.ServerError, err.Error())
 	}
 
-	return utils.SendSuccessResponse(c, http.StatusNoContent, "Komentar berhasil dihapus")
+	return utils.SendSuccessResponse(c, response.Success)
 }
